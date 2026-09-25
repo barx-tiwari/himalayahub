@@ -1,0 +1,143 @@
+:root {
+  --font-display: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  --font-np: 'Mukta', 'Noto Sans Devanagari', 'Nirmala UI', sans-serif;
+
+  --fs-xs: 0.8125rem;
+  --fs-sm: 0.875rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.375rem;
+  --fs-2xl: 1.75rem;
+  --fs-3xl: clamp(1.9rem, 1.4rem + 2vw, 2.5rem);
+  --fs-hero: clamp(2.6rem, 1.6rem + 5vw, 4.75rem);
+
+  --r-xl: 22px;
+  --r-lg: 16px;
+  --r-md: 12px;
+  --r-sm: 8px;
+  --r-pill: 999px;
+
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 72px;
+
+  --container: 1200px;
+  --nav-h: 64px;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f4f6fa;
+  --bg-soft: #eaeef6;
+  --surface: #ffffff;
+  --surface-2: #f7f9fc;
+  --border: #d9e0ec;
+  --border-strong: #b9c4d8;
+  --text: #162033;
+  --text-muted: #56627a;
+  --primary: #2344b8;
+  --primary-hover: #1a358f;
+  --primary-soft: #e5ebfb;
+  --on-primary: #ffffff;
+  --accent: #c81f38;
+  --accent-soft: #fde7ea;
+  --success: #0a7f58;
+  --success-soft: #e0f4ec;
+  --warning: #9a5c00;
+  --warning-soft: #fff2d8;
+  --danger: #bf2233;
+  --danger-soft: #fde6e8;
+  --focus: #2344b8;
+  --shadow-pop: 0 12px 32px -12px rgba(22, 32, 51, 0.28), 0 2px 6px rgba(22, 32, 51, 0.06);
+  --shadow-soft: 0 1px 2px rgba(22, 32, 51, 0.05), 0 6px 18px -10px rgba(22, 32, 51, 0.16);
+  --ridge: #d4dcec;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0d1320;
+  --bg-soft: #121a2b;
+  --surface: #151e31;
+  --surface-2: #1a243a;
+  --border: #28334d;
+  --border-strong: #3a4766;
+  --text: #e6ebf5;
+  --text-muted: #9ba7bf;
+  --primary: #86a2ff;
+  --primary-hover: #a7bbff;
+  --primary-soft: #1f2b52;
+  --on-primary: #0d1320;
+  --accent: #ff7085;
+  --accent-soft: #3a1b25;
+  --success: #45d6a0;
+  --success-soft: #11342a;
+  --warning: #f5bd4f;
+  --warning-soft: #362a12;
+  --danger: #ff7a86;
+  --danger-soft: #3a1a20;
+  --focus: #a7bbff;
+  --shadow-pop: 0 16px 40px -12px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --ridge: #1c2640;
+}
+
+/* =====================================================================
+   Brand palette (v2). Named after things in Nepal so the system has a
+   point of view. Change a hue here and every area that uses it follows.
+   ===================================================================== */
+:root,
+:root[data-theme='light'] {
+  --c-blue: #2f55d4;    /* Himal blue */
+  --c-purple: #7045d8;  /* Dusk purple */
+  --c-cyan: #0a8fb0;    /* Glacier cyan */
+  --c-green: #178a55;   /* Terai green */
+  --c-orange: #d9640a;  /* Marigold */
+  --c-gold: #a8780a;    /* Temple gold (darkened for text contrast on light) */
+  --c-pink: #cf2f6a;    /* Rhododendron */
+  --c-red: #c81f38;     /* Emergency red (same as --accent) */
+
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.9);
+  --glass-shadow: 0 1px 0 rgba(255,255,255,.8) inset, 0 10px 30px -14px rgba(34, 48, 94, 0.28);
+  --aura-opacity: 0.55;
+  --skeleton: #e3e8f2;
+  --skeleton-shine: #f1f4f9;
+  --up: #0a7f58;
+  --down: #bf2233;
+}
+
+:root[data-theme='dark'] {
+  --c-blue: #7d9bff;
+  --c-purple: #ad8cff;
+  --c-cyan: #4fd0ee;
+  --c-green: #4ed69a;
+  --c-orange: #ff9d4d;
+  --c-gold: #f2c14e;
+  --c-pink: #ff7aa8;
+  --c-red: #ff7085;
+
+  --glass-bg: rgba(24, 33, 54, 0.66);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 16px 36px -16px rgba(0, 0, 0, 0.7);
+  --aura-opacity: 0.32;
+  --skeleton: #1f2a42;
+  --skeleton-shine: #283552;
+  --up: #45d6a0;
+  --down: #ff7a86;
+}
+
+/* Each area of the site maps to one fixed pair of hues.
+   Pages set data-domain on their root element; components read --d1/--d2. */
+:root, [data-domain='learn'] { --d1: var(--c-blue); --d2: var(--c-purple); }
+[data-domain='news']    { --d1: var(--c-cyan);   --d2: var(--c-blue); }
+[data-domain='sports']  { --d1: var(--c-green);  --d2: var(--c-cyan); }
+[data-domain='markets'] { --d1: var(--c-gold);   --d2: var(--c-orange); }
+[data-domain='nepal']   { --d1: var(--c-cyan);   --d2: var(--c-green); }
+[data-domain='tools']   { --d1: var(--c-pink);   --d2: var(--c-orange); }
+[data-domain='fun']     { --d1: var(--c-purple); --d2: var(--c-pink); }
+[data-domain='alert']   { --d1: var(--c-red);    --d2: var(--c-red); }
+[data-domain] { --d-grad: linear-gradient(100deg, var(--d1), var(--d2)); --d-soft: color-mix(in srgb, var(--d1) 12%, var(--surface)); }
+:root { --d-grad: linear-gradient(100deg, var(--d1), var(--d2)); --d-soft: color-mix(in srgb, var(--d1) 12%, var(--surface)); }

@@ -1,0 +1,21 @@
+{
+  "name": "himalayahub",
+  "private": true,
+  "version": "4.0.0",
+  "description": "HimalayaHub — Learn • Explore • Discover. Web app, REST API and CMS.",
+  "workspaces": ["apps/*", "packages/*"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:web": "npm run dev -w @himalayahub/web",
+    "dev:api": "npm run dev -w @himalayahub/api",
+    "build": "npm run build -w @himalayahub/shared && npm run build -w @himalayahub/api && npm run build -w @himalayahub/web",
+    "start": "npm run start -w @himalayahub/api",
+    "test": "npm run test --workspaces --if-present",
+    "db:generate": "npm run db:generate -w @himalayahub/api",
+    "db:migrate": "npm run db:migrate -w @himalayahub/api",
+    "db:deploy": "npm run db:deploy -w @himalayahub/api",
+    "db:seed": "npm run db:seed -w @himalayahub/api",
+    "db:validate": "npm run db:validate -w @himalayahub/api"
+  }
+}

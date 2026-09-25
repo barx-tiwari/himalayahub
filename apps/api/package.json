@@ -1,0 +1,47 @@
+{
+  "name": "@himalayahub/api",
+  "version": "4.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node --env-file-if-exists=../../.env dist/server.js",
+    "test": "node --import tsx --test test/*.test.ts",
+    "db:generate": "prisma generate",
+    "db:validate": "prisma validate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio",
+    "seed:check": "tsx prisma/seed/check.ts",
+    "db:backup": "node scripts/backup-sqlite.mjs"
+  },
+  "prisma": {
+    "seed": "tsx --env-file-if-exists=../../.env prisma/seed.ts"
+  },
+  "dependencies": {
+    "@himalayahub/shared": "*",
+    "@prisma/client": "^6.2.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "helmet": "^8.0.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.8",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.2",
+    "@types/supertest": "^6.0.2",
+    "prisma": "^6.2.0",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.33.5"
+  }
+}

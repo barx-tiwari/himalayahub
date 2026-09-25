@@ -1,0 +1,10 @@
+/* Small additions used by components */
+button.chip { border: 0; cursor: pointer; }
+button.chip:hover { background: var(--primary-soft); color: var(--primary); }
+.cal-cell:disabled { opacity: .35; cursor: not-allowed; }
+.cal-cell:disabled:hover { border-color: var(--border); }
+.tarot-card:disabled { opacity: 1; }
+.lesson-nav li { list-style: none; }
+.quiz-option > span:last-child { flex: 1; }
+.search-results ul[role='listbox'] { list-style: none; margin: 0; padding: 0; }
+.typing-card .typing-surface > div { will-change: transform; }

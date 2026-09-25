@@ -1,0 +1,1536 @@
+// HimalayaHub database schema (SQLite + Prisma; portable to PostgreSQL — see docs/DATABASE.md).
+//
+// Conventions
+// - ids are cuid strings; every table has createdAt/updatedAt where it makes sense.
+// - Editorial content uses ContentStatus (DRAFT / PUBLISHED / ARCHIVED) and a nullable
+//   deletedAt for soft deletion. Nothing important is hard-deleted by the API.
+// - Live data (weather, sports, markets) is stored as *snapshots/cache* with a source and
+//   timestamp. It is never treated as permanent truth and never invented.
+// - No plain-text secrets: passwords are hashed; session/reset tokens are stored as SHA-256
+//   hashes; API keys stay in environment variables (ApiSetting only stores the variable NAME).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL") // e.g. file:./dev.db (path is relative to this prisma/ folder)
+}
+
+// ─────────────────────────────── Enums ───────────────────────────────
+
+enum Role {
+  USER
+  STUDENT
+  EDITOR
+  MODERATOR
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum Difficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum AuthTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  HALFTIME
+  FINISHED
+  POSTPONED
+  CANCELLED
+}
+
+enum AssetType {
+  NEPSE
+  CRYPTO
+  CURRENCY
+}
+
+enum CalendarType {
+  AD
+  BS
+}
+
+enum QuestionType {
+  MCQ
+  TRUE_FALSE
+}
+
+enum ContentType {
+  NOTE
+  COURSE
+  NEWS
+  DESTINATION
+  ARTICLE
+  SUBJECT
+}
+
+enum ActivityType {
+  COURSE_ENROLLED
+  COURSE_COMPLETED
+  LESSON_COMPLETED
+  QUIZ_COMPLETED
+  TYPING_ATTEMPT
+  NOTE_VIEWED
+  DESTINATION_VIEWED
+}
+
+enum NotificationType {
+  NEW_COURSE
+  NEW_NOTE
+  IMPORTANT_NEWS
+  WEATHER_WARNING
+  MATCH_STARTING
+  SYSTEM
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+}
+
+enum LiveService {
+  NEWS
+  WEATHER
+  SPORTS_FOOTBALL
+  SPORTS_CRICKET
+  CRYPTO
+  NEPSE
+  CURRENCY
+}
+
+// ───────────────────────── Users, auth & RBAC ─────────────────────────
+
+model User {
+  id              String    @id @default(cuid())
+  name            String
+  email           String    @unique
+  emailVerifiedAt DateTime?
+  passwordHash    String? // null for OAuth-only accounts
+  avatar          String?
+  role            Role      @default(USER)
+  phone           String?
+  country         String?   @default("Nepal")
+  province        String?
+  district        String?
+  bio             String?
+  dateOfBirth     DateTime?
+  isActive        Boolean   @default(true)
+  lastLoginAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  profile           UserProfile?
+  oauthAccounts     OAuthAccount[]
+  sessions          Session[]
+  authTokens        AuthToken[]
+  newsArticles      NewsArticle[]
+  notes             Note[]
+  coursesTaught     Course[]
+  enrollments       CourseEnrollment[]
+  courseProgress    CourseProgress[]
+  quizAttempts      QuizAttempt[]
+  typingAttempts    TypingAttempt[]
+  bookmarks         Bookmark[]
+  favorites         Favorite[]
+  activities        Activity[]
+  notifications     Notification[]
+  mediaUploads      MediaAsset[]
+  auditLogs         AuditLog[]
+  refreshTokens     RefreshToken[]
+  savedTrips        SavedTrip[]
+  communityPosts    CommunityPost[]
+  communityComments CommunityComment[]
+  communityVotes    CommunityVote[]
+  reportsFiled      ContentReport[]    @relation("Reporter")
+  reportsResolved   ContentReport[]    @relation("Resolver")
+  communityBans     CommunityBan[]     @relation("BannedUser")
+  bansIssued        CommunityBan[]     @relation("BanIssuer")
+
+  @@index([role])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model UserProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  educationLevel    String?
+  college           String?
+  course            String?
+  semester          Int?
+  interests         Json? // JSON array of strings (SQLite has no native arrays)
+  travelInterests   Json? // JSON array: trekking, culture, wildlife, food, photography…
+  travelerType      String? // domestic | international
+  preferredLanguage String   @default("en")
+  timezone          String   @default("Asia/Kathmandu")
+  theme             String   @default("system")
+  avatar            String?
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OAuthAccount {
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String // "google"
+  providerAccountId String
+  createdAt         DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+/// Opaque server-side sessions (httpOnly cookie). Only the SHA-256 of the token is stored.
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  userAgent  String?
+  ipHash     String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Single-use tokens for email verification and password reset (hash only).
+model AuthToken {
+  id        String        @id @default(cuid())
+  userId    String
+  type      AuthTokenType
+  tokenHash String        @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+/// Native/mobile clients only: rotating refresh tokens (hash only). Browsers keep using the
+/// httpOnly session cookie. Reuse of a rotated token revokes the whole family.
+model RefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  familyId   String
+  tokenHash  String    @unique
+  deviceName String?
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  rotatedAt  DateTime?
+  revokedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+/// Brute-force protection. IPs are stored hashed.
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ipHash    String?
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ipHash, createdAt])
+}
+
+/// Permission overrides editable by SUPER_ADMIN. Defaults live in @himalayahub/shared.
+model RolePermission {
+  role       Role
+  permission String
+  granted    Boolean  @default(true)
+  updatedAt  DateTime @updatedAt
+
+  @@id([role, permission])
+}
+
+// ─────────────────────────────── News ───────────────────────────────
+
+model NewsCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  articles NewsArticle[]
+}
+
+model NewsSource {
+  id          String   @id @default(cuid())
+  name        String
+  url         String
+  apiEndpoint String?
+  rssUrl      String?
+  logo        String?
+  region      String? // nepal | world
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  articles NewsArticle[]
+
+  @@index([isActive])
+}
+
+model NewsArticle {
+  id              String        @id @default(cuid())
+  title           String
+  slug            String        @unique
+  summary         String?
+  content         String // sanitised HTML from the CMS editor
+  featuredImage   String?
+  categoryId      String?
+  sourceId        String?
+  sourceName      String?
+  sourceUrl       String?
+  authorId        String?
+  authorName      String?
+  status          ContentStatus @default(DRAFT)
+  isFeatured      Boolean       @default(false)
+  isBreaking      Boolean       @default(false)
+  isDemo          Boolean       @default(false)
+  views           Int           @default(0)
+  publishedAt     DateTime?
+  metaTitle       String?
+  metaDescription String?
+  ogImage         String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+
+  category NewsCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  source   NewsSource?      @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  author   User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  tags     NewsArticleTag[]
+
+  @@index([publishedAt])
+  @@index([categoryId])
+  @@index([status])
+  @@index([status, publishedAt(sort: Desc)])
+  @@index([categoryId, status, publishedAt(sort: Desc)])
+}
+
+model Tag {
+  id   String @id @default(cuid())
+  name String @unique
+  slug String @unique
+
+  news  NewsArticleTag[]
+  notes NoteTag[]
+}
+
+model NewsArticleTag {
+  articleId String
+  tagId     String
+
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag     Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, tagId])
+  @@index([tagId])
+}
+
+// ──────────────────────────── Destinations ────────────────────────────
+
+model DestinationCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  emoji     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  destinations DestinationOnCategory[]
+}
+
+model Destination {
+  id                String        @id @default(cuid())
+  name              String
+  slug              String        @unique
+  tagline           String?
+  shortDescription  String?
+  description       String?
+  knownFor          String?
+  province          String // province slug, e.g. "gandaki"
+  district          String?
+  zone              String? // himalaya | hill | valley | terai
+  latitude          Float
+  longitude         Float
+  featuredImage     String?
+  bestTimeToVisit   String?
+  typicalDuration   String?
+  gettingThere      String?
+  activities        Json? // JSON array of strings (SQLite has no native arrays)
+  nearbyAttractions Json? // JSON array of strings (SQLite has no native arrays)
+  travelTips        Json? // JSON array of strings (SQLite has no native arrays)
+  safetyInformation Json? // JSON array of strings (SQLite has no native arrays)
+  isMountainArea    Boolean       @default(false)
+  isViewDependent   Boolean       @default(false)
+  region            String? // eastern | central | western | far-western (for "Eastern Nepal" filters)
+  elevationM        Int? // highest commonly visited point, metres
+  difficulty        String? // easy | moderate | challenging | strenuous
+  distanceFromKtmKm Int? // approximate road/air distance, documented in guide
+  isHiddenGem       Boolean       @default(false)
+  hiddenGemRank     Int?
+  guide             Json? // structured travel guide, validated by destinations.schemas guideSchema
+  isFeatured        Boolean       @default(false)
+  sortOrder         Int           @default(0)
+  status            ContentStatus @default(PUBLISHED)
+  views             Int           @default(0)
+  metaTitle         String?
+  metaDescription   String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?
+
+  images     DestinationImage[]
+  categories DestinationOnCategory[]
+  nearby     Destination[]           @relation("NearbyDestinations")
+  nearbyOf   Destination[]           @relation("NearbyDestinations")
+  stays      Stay[]
+
+  @@index([status, isFeatured, sortOrder])
+  @@index([status, isHiddenGem, hiddenGemRank])
+  @@index([region])
+  @@index([province])
+  @@index([deletedAt])
+}
+
+model DestinationImage {
+  id            String   @id @default(cuid())
+  destinationId String
+  imageUrl      String? // uploaded/object-storage URL
+  commonsFile   String? // Wikimedia Commons file name (credits resolved at runtime)
+  caption       String?
+  altText       String
+  credit        String?
+  license       String?
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  destination Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+
+  @@index([destinationId, sortOrder])
+}
+
+model DestinationOnCategory {
+  destinationId String
+  categoryId    String
+
+  destination Destination         @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  category    DestinationCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([destinationId, categoryId])
+  @@index([categoryId])
+}
+
+// ──────────────────────────── Weather cache ────────────────────────────
+
+/// Short-lived cache of provider forecasts. Never the source of truth.
+model WeatherSnapshot {
+  id              String    @id @default(cuid())
+  locationKey     String // rounded "lat,lon"
+  location        String?
+  latitude        Float
+  longitude       Float
+  temperature     Float?
+  feelsLike       Float?
+  condition       String?
+  weatherCode     Int?
+  humidity        Float?
+  windSpeed       Float?
+  visibility      Float?
+  rainProbability Float?
+  uvIndex         Float?
+  sunrise         DateTime?
+  sunset          DateTime?
+  forecast        Json? // normalised daily/hourly forecast as returned to clients
+  provider        String
+  recordedAt      DateTime
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+
+  @@index([locationKey, recordedAt(sort: Desc)])
+  @@index([expiresAt])
+}
+
+// ─────────────────────────────── Sports ───────────────────────────────
+
+model Sport {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  leagues League[]
+  teams   Team[]
+}
+
+/// A league or tournament (Premier League, Nepal Premier League…). Configured in the CMS.
+model League {
+  id             String   @id @default(cuid())
+  name           String
+  slug           String   @unique
+  sportId        String
+  country        String?
+  logo           String?
+  provider       String? // e.g. "football-data", "cricketdata"
+  externalId     String? // provider competition code/id
+  refreshSeconds Int      @default(300)
+  displayOrder   Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  sport        Sport         @relation(fields: [sportId], references: [id], onDelete: Restrict)
+  competitions Competition[]
+  teams        Team[]
+  matches      Match[]
+
+  @@unique([provider, externalId])
+  @@index([sportId, isActive])
+}
+
+/// A season/edition of a league, e.g. "NPL 2025" or "Premier League 2025/26".
+model Competition {
+  id        String    @id @default(cuid())
+  leagueId  String
+  name      String
+  season    String?
+  startDate DateTime?
+  endDate   DateTime?
+  createdAt DateTime  @default(now())
+
+  league  League  @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  matches Match[]
+
+  @@unique([leagueId, season])
+}
+
+model Venue {
+  id        String   @id @default(cuid())
+  name      String
+  city      String?
+  country   String?
+  capacity  Int?
+  createdAt DateTime @default(now())
+
+  matches Match[]
+
+  @@unique([name, city])
+}
+
+model Team {
+  id         String   @id @default(cuid())
+  name       String
+  shortName  String?
+  country    String?
+  logo       String?
+  sportId    String
+  leagueId   String?
+  provider   String?
+  externalId String?
+  isDemo     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  sport          Sport            @relation(fields: [sportId], references: [id], onDelete: Restrict)
+  league         League?          @relation(fields: [leagueId], references: [id], onDelete: SetNull)
+  players        Player[]
+  homeMatches    Match[]          @relation("HomeTeam")
+  awayMatches    Match[]          @relation("AwayTeam")
+  battingInnings CricketInnings[] @relation("BattingTeam")
+  bowlingInnings CricketInnings[] @relation("BowlingTeam")
+
+  @@unique([provider, externalId])
+  @@index([leagueId])
+}
+
+model Player {
+  id         String   @id @default(cuid())
+  name       String
+  teamId     String?
+  position   String? // batter, bowler, forward…
+  country    String?
+  provider   String?
+  externalId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  team            Team?            @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  strikerIn       CricketInnings[] @relation("Striker")
+  nonStrikerIn    CricketInnings[] @relation("NonStriker")
+  currentBowlerIn CricketInnings[] @relation("CurrentBowler")
+
+  @@unique([provider, externalId])
+  @@index([teamId])
+}
+
+/// Matches are written by sync jobs from provider data — never by hand-typed scores.
+model Match {
+  id            String      @id @default(cuid())
+  leagueId      String
+  competitionId String?
+  homeTeamId    String
+  awayTeamId    String
+  venueId       String?
+  scheduledAt   DateTime
+  status        MatchStatus @default(SCHEDULED)
+  homeScore     Int?
+  awayScore     Int?
+  period        String? // "2H 67'", "Innings 2", …
+  resultText    String?
+  source        String // provider name
+  externalId    String?
+  isDemo        Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  league      League           @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  competition Competition?     @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+  homeTeam    Team             @relation("HomeTeam", fields: [homeTeamId], references: [id], onDelete: Restrict)
+  awayTeam    Team             @relation("AwayTeam", fields: [awayTeamId], references: [id], onDelete: Restrict)
+  venue       Venue?           @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  innings     CricketInnings[]
+
+  @@unique([source, externalId])
+  @@index([scheduledAt])
+  @@index([leagueId, scheduledAt])
+  @@index([status])
+}
+
+/// Cricket scorecard state per innings (also used for NPL — same Match model).
+model CricketInnings {
+  id              String   @id @default(cuid())
+  matchId         String
+  inningsNumber   Int
+  battingTeamId   String
+  bowlingTeamId   String
+  runs            Int      @default(0)
+  wickets         Int      @default(0)
+  balls           Int      @default(0) // legal deliveries; overs derived as balls/6
+  extras          Int?
+  target          Int?
+  runRate         Float?
+  requiredRunRate Float?
+  isCurrent       Boolean  @default(false)
+  strikerId       String?
+  nonStrikerId    String?
+  currentBowlerId String?
+  updatedAt       DateTime @updatedAt
+
+  match         Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  battingTeam   Team    @relation("BattingTeam", fields: [battingTeamId], references: [id], onDelete: Restrict)
+  bowlingTeam   Team    @relation("BowlingTeam", fields: [bowlingTeamId], references: [id], onDelete: Restrict)
+  striker       Player? @relation("Striker", fields: [strikerId], references: [id], onDelete: SetNull)
+  nonStriker    Player? @relation("NonStriker", fields: [nonStrikerId], references: [id], onDelete: SetNull)
+  currentBowler Player? @relation("CurrentBowler", fields: [currentBowlerId], references: [id], onDelete: SetNull)
+
+  @@unique([matchId, inningsNumber])
+}
+
+// ─────────────────────────────── Markets ───────────────────────────────
+
+/// Append-only price history for every asset type. Shown with "Last updated", never as live.
+model MarketSnapshot {
+  id            String    @id @default(cuid())
+  assetType     AssetType
+  symbol        String
+  name          String?
+  price         Decimal
+  change        Decimal?
+  changePercent Float?
+  volume        Decimal?
+  marketCap     Decimal?
+  currency      String    @default("USD")
+  source        String
+  isDemo        Boolean   @default(false)
+  recordedAt    DateTime
+  createdAt     DateTime  @default(now())
+
+  @@index([assetType, symbol, recordedAt(sort: Desc)])
+  @@index([recordedAt])
+}
+
+model CryptoAsset {
+  id           String   @id @default(cuid())
+  symbol       String   @unique
+  name         String
+  logo         String?
+  marketCap    Decimal?
+  currentPrice Decimal?
+  change24h    Float?
+  volume24h    Decimal?
+  sparkline7d  Json?
+  source       String
+  updatedAt    DateTime @updatedAt
+
+  @@index([marketCap(sort: Desc)])
+}
+
+model NepseMarketSnapshot {
+  id            String   @id @default(cuid())
+  indexValue    Decimal
+  change        Decimal?
+  changePercent Float?
+  turnover      Decimal?
+  volume        BigInt?
+  transactions  Int?
+  marketStatus  String? // OPEN | CLOSED | PRE_OPEN
+  source        String
+  recordedAt    DateTime
+
+  @@index([recordedAt(sort: Desc)])
+}
+
+model NepseSecurity {
+  id            String   @id @default(cuid())
+  symbol        String   @unique
+  name          String
+  sector        String?
+  price         Decimal?
+  change        Decimal?
+  changePercent Float?
+  volume        BigInt?
+  source        String?
+  updatedAt     DateTime @updatedAt
+
+  @@index([sector])
+}
+
+// ────────────────────────────── Academics ──────────────────────────────
+
+model University {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  shortName String?
+  country   String   @default("Nepal")
+  website   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  programs Program[]
+}
+
+/// A programme as taught at one university (e.g. BSc CSIT at TU). Syllabi differ per university.
+model Program {
+  id            String        @id @default(cuid())
+  universityId  String?
+  code          String // "csit", "bca"… used in /notes/:code
+  name          String
+  slug          String        @unique
+  fullName      String?
+  blurb         String?
+  durationYears Int?
+  status        ContentStatus @default(PUBLISHED)
+  sortOrder     Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  university University? @relation(fields: [universityId], references: [id], onDelete: SetNull)
+  semesters  Semester[]
+  notes      Note[]
+
+  @@index([code])
+}
+
+model Semester {
+  id        String   @id @default(cuid())
+  programId String
+  number    Int
+  name      String?
+  createdAt DateTime @default(now())
+
+  program  Program           @relation(fields: [programId], references: [id], onDelete: Cascade)
+  subjects SemesterSubject[]
+  notes    Note[]
+
+  @@unique([programId, number])
+}
+
+/// A subject can be taught in several programmes/semesters (e.g. DBMS in CSIT and BCA).
+model Subject {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  code        String?
+  title       String
+  description String?
+  creditHours Int?
+  icon        String?
+  content     Json? // structured study material (sections, definitions, Q&A)
+  status      ContentStatus @default(PUBLISHED)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  semesters SemesterSubject[]
+  notes     Note[]
+  quizzes   Quiz[]
+}
+
+model SemesterSubject {
+  semesterId   String
+  subjectId    String
+  displayTitle String? // local course name, e.g. "Computer Fundamentals & Applications"
+  sortOrder    Int     @default(0)
+
+  semester Semester @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  subject  Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@id([semesterId, subjectId])
+  @@index([subjectId])
+}
+
+model NoteCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  icon      String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  notes Note[]
+}
+
+model Note {
+  id              String        @id @default(cuid())
+  title           String
+  slug            String        @unique
+  summary         String?
+  content         String // sanitised HTML (rich text: headings, lists, tables, code, images, links)
+  structured      Json? // imported v3 notes (diagrams, key points, Q&A) rendered by the existing NoteDetail page
+  programId       String?
+  semesterId      String?
+  subjectId       String?
+  categoryId      String?
+  authorId        String?
+  featuredImage   String?
+  status          ContentStatus @default(DRAFT)
+  views           Int           @default(0)
+  publishedAt     DateTime?
+  metaTitle       String?
+  metaDescription String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+
+  program  Program?      @relation(fields: [programId], references: [id], onDelete: SetNull)
+  semester Semester?     @relation(fields: [semesterId], references: [id], onDelete: SetNull)
+  subject  Subject?      @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  category NoteCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  author   User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  tags     NoteTag[]
+
+  @@index([status, publishedAt(sort: Desc)])
+  @@index([programId, semesterId, status])
+  @@index([subjectId, status])
+  @@index([categoryId, status])
+}
+
+model NoteTag {
+  noteId String
+  tagId  String
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, tagId])
+  @@index([tagId])
+}
+
+// ─────────────────────────────── Courses ───────────────────────────────
+
+model Course {
+  id              String        @id @default(cuid())
+  title           String
+  slug            String        @unique
+  description     String?
+  thumbnail       String?
+  color           String?
+  icon            String?
+  instructorId    String?
+  instructorName  String?
+  difficulty      Difficulty    @default(BEGINNER)
+  durationMinutes Int?
+  status          ContentStatus @default(DRAFT)
+  price           Decimal       @default(0)
+  isFree          Boolean       @default(true)
+  quizId          String?
+  metaTitle       String?
+  metaDescription String?
+  publishedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+
+  instructor  User?              @relation(fields: [instructorId], references: [id], onDelete: SetNull)
+  quiz        Quiz?              @relation("CourseQuiz", fields: [quizId], references: [id], onDelete: SetNull)
+  lessons     CourseLesson[]
+  enrollments CourseEnrollment[]
+  progress    CourseProgress[]
+
+  @@index([status, publishedAt(sort: Desc)])
+}
+
+model CourseLesson {
+  id              String   @id @default(cuid())
+  courseId        String
+  title           String
+  slug            String
+  content         String
+  practice        Json? // JSON array of strings (SQLite has no native arrays)
+  videoUrl        String?
+  durationMinutes Int?
+  relatedNoteSlug String?
+  sortOrder       Int      @default(0)
+  isPublished     Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  course   Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  progress CourseProgress[]
+
+  @@unique([courseId, slug])
+  @@index([courseId, sortOrder])
+}
+
+model CourseEnrollment {
+  id          String    @id @default(cuid())
+  userId      String
+  courseId    String
+  enrolledAt  DateTime  @default(now())
+  completedAt DateTime?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([courseId])
+}
+
+model CourseProgress {
+  id        String   @id @default(cuid())
+  userId    String
+  courseId  String
+  lessonId  String
+  progress  Int      @default(0) // 0–100
+  completed Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson CourseLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@index([userId, courseId, updatedAt(sort: Desc)])
+}
+
+// ──────────────────────────────── Quizzes ────────────────────────────────
+
+model Quiz {
+  id           String        @id @default(cuid())
+  title        String
+  slug         String        @unique
+  description  String?
+  category     String?
+  subjectId    String?
+  timeLimitSec Int?
+  status       ContentStatus @default(PUBLISHED)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  subject   Subject?      @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  questions Question[]
+  attempts  QuizAttempt[]
+  courses   Course[]      @relation("CourseQuiz")
+
+  @@index([category, status])
+}
+
+model Question {
+  id          String       @id @default(cuid())
+  quizId      String
+  type        QuestionType @default(MCQ)
+  prompt      String
+  explanation String?
+  sortOrder   Int          @default(0)
+
+  quiz    Quiz           @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  options AnswerOption[]
+
+  @@index([quizId, sortOrder])
+}
+
+model AnswerOption {
+  id         String  @id @default(cuid())
+  questionId String
+  text       String
+  isCorrect  Boolean @default(false)
+  sortOrder  Int     @default(0)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+model QuizAttempt {
+  id           String   @id @default(cuid())
+  userId       String
+  quizId       String
+  score        Int
+  total        Int
+  percentage   Float
+  timeTakenSec Int?
+  answers      Json? // [{ questionId, optionId, correct }]
+  attemptedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([userId, attemptedAt(sort: Desc)])
+  @@index([quizId])
+}
+
+// ──────────────────────────────── Typing ────────────────────────────────
+
+model TypingChallenge {
+  id           String        @id @default(cuid())
+  title        String
+  slug         String        @unique
+  text         String
+  difficulty   Difficulty    @default(BEGINNER)
+  category     String // "test" | "lesson" | "daily"
+  lessonNumber Int?
+  durationSec  Int?
+  status       ContentStatus @default(PUBLISHED)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  attempts TypingAttempt[]
+
+  @@index([category, difficulty])
+}
+
+model TypingAttempt {
+  id          String   @id @default(cuid())
+  userId      String
+  challengeId String?
+  wpm         Int
+  accuracy    Float
+  characters  Int
+  errors      Int
+  durationSec Int
+  isDaily     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challenge TypingChallenge? @relation(fields: [challengeId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([challengeId])
+}
+
+// ─────────────────────── Bookmarks, favorites, activity ───────────────────────
+
+model Bookmark {
+  id          String      @id @default(cuid())
+  userId      String
+  contentType ContentType
+  contentId   String
+  createdAt   DateTime    @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentType, contentId])
+  @@index([contentType, contentId])
+}
+
+model Favorite {
+  id          String      @id @default(cuid())
+  userId      String
+  contentType ContentType
+  contentId   String
+  createdAt   DateTime    @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentType, contentId])
+  @@index([contentType, contentId])
+}
+
+/// Learning activity for the dashboard. Only what the dashboard needs — no browsing trails.
+model Activity {
+  id          String       @id @default(cuid())
+  userId      String
+  type        ActivityType
+  contentType ContentType?
+  contentId   String?
+  metadata    Json?
+  createdAt   DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([type, createdAt])
+}
+
+// ──────────────────────────── Notifications ────────────────────────────
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt(sort: Desc)])
+}
+
+/// Operational alerts for staff (provider down, DB errors). De-duplicated by source+code.
+model SystemAlert {
+  id         String        @id @default(cuid())
+  source     String // "weather", "sports:football", "news", "database"
+  code       String
+  severity   AlertSeverity @default(WARNING)
+  message    String
+  count      Int           @default(1)
+  firstSeen  DateTime      @default(now())
+  lastSeen   DateTime      @default(now())
+  resolvedAt DateTime?
+  openKey    String?       @unique // "source:code" while open; cleared on resolve (NULLs don't collide)
+
+  @@index([resolvedAt, lastSeen(sort: Desc)])
+}
+
+// ───────────────────────────── Calendar ─────────────────────────────
+
+model Holiday {
+  id              String       @id @default(cuid())
+  name            String
+  nameNe          String?
+  date            DateTime // AD date the holiday falls on
+  bsDate          String? // "2083-06-24"
+  calendarType    CalendarType @default(BS)
+  description     String?
+  isPublicHoliday Boolean      @default(false)
+  source          String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([name, date])
+  @@index([date])
+}
+
+// ───────────────────────────── Emergency ─────────────────────────────
+
+/// Only rows with isVerified && isActive are shown publicly.
+model EmergencyService {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  serviceName     String
+  category        String // Police, Ambulance, Fire, Traffic Police, Tourist Police, Disaster, Health, Government, Cyber Crime, Women/Children, Electricity, Water
+  phone           String?
+  province        String?
+  district        String?
+  municipality    String?
+  availability    String?
+  note            String?
+  officialWebsite String?
+  source          String
+  sourceUrl       String?
+  lastVerified    DateTime
+  isPrimary       Boolean  @default(false)
+  isVerified      Boolean  @default(true)
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([category, isActive])
+  @@index([province, district])
+}
+
+// ───────────────────────────── CMS & system ─────────────────────────────
+
+model MediaAsset {
+  id           String    @id @default(cuid())
+  storageKey   String    @unique
+  url          String
+  filename     String
+  mimeType     String
+  size         Int
+  width        Int?
+  height       Int?
+  altText      String?
+  caption      String?
+  variants     Json? // { "640": url, "1280": url, "webp": … }
+  uploadedById String?
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+
+  uploadedBy User? @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([filename])
+}
+
+/// Single row (id = 1). The web app reads it on load; changing it updates the site everywhere.
+model SiteSettings {
+  id                     Int      @id @default(1)
+  siteName               String   @default("HimalayaHub")
+  tagline                String   @default("Learn • Explore • Discover")
+  secondaryTagline       String?
+  description            String?
+  logoUrl                String?
+  faviconUrl             String?
+  contactPhone           String?
+  contactEmail           String?
+  whatsappNumber         String   @default("+977 9863903703")
+  whatsappMessage        String   @default("Hello HimalayaHub, I need some help.")
+  socialLinks            Json? // { facebook, instagram, youtube, x, tiktok }
+  footerText             String?
+  defaultMetaTitle       String?
+  defaultMetaDescription String?
+  defaultOgImage         String?
+  theme                  Json? // { accent, defaultMode }
+  updatedAt              DateTime @updatedAt
+  updatedById            String?
+}
+
+/// Non-secret provider configuration. `secretEnvVar` holds the NAME of an env var, never a key.
+model ApiSetting {
+  id             String      @id @default(cuid())
+  service        LiveService @unique
+  provider       String
+  baseUrl        String?
+  enabled        Boolean     @default(true)
+  refreshSeconds Int
+  options        Json? // e.g. { competitions: ["PL","CL"], display: {...} }
+  secretEnvVar   String?
+  lastSuccessAt  DateTime?
+  lastErrorAt    DateTime?
+  lastError      String?
+  updatedAt      DateTime    @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String // ADMIN_CREATED_NEWS, USER_ROLE_CHANGED, …
+  resource   String
+  resourceId String?
+  ipAddress  String? // stored truncated/anonymised
+  metadata   Json? // changed field NAMES only, never secrets/passwords
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([resource, resourceId])
+  @@index([userId, createdAt])
+}
+
+model SystemLog {
+  id        String   @id @default(cuid())
+  level     LogLevel
+  category  String // api, auth, provider, job, db
+  message   String
+  context   Json? // redacted
+  requestId String?
+  createdAt DateTime @default(now())
+
+  @@index([level, createdAt(sort: Desc)])
+  @@index([category, createdAt])
+}
+
+// ───────────────────── Privacy-conscious analytics ─────────────────────
+// Aggregate counters only: no user ids, no IPs, no per-visitor trails.
+
+model PageViewDaily {
+  date  DateTime
+  path  String
+  views Int      @default(0)
+
+  @@id([date, path])
+}
+
+model ContentViewDaily {
+  date        DateTime
+  contentType ContentType
+  contentId   String
+  views       Int         @default(0)
+
+  @@id([date, contentType, contentId])
+  @@index([contentType, date])
+}
+
+// ─────────────────────────── Stays (hotels, homestays…) ───────────────────────────
+// Only listings a person has checked go here (isVerified). Google Places results are
+// fetched live by /api/places and are NOT stored beyond the place_id (Google ToS).
+
+enum StayType {
+  HOTEL
+  HOMESTAY
+  RESORT
+  LODGE
+  CAMPING
+}
+
+model Stay {
+  id               String        @id @default(cuid())
+  destinationId    String
+  name             String
+  slug             String        @unique
+  type             StayType
+  description      String?
+  phone            String?
+  email            String?
+  website          String?
+  latitude         Float?
+  longitude        Float?
+  amenities        Json? // JSON array of strings
+  priceMinNpr      Int?
+  priceMaxNpr      Int?
+  googlePlaceId    String? // lets the site show live Google rating/reviews
+  isVerified       Boolean       @default(false)
+  verifiedAt       DateTime?
+  verificationNote String? // how/when the details were confirmed (phone call, visit…)
+  status           ContentStatus @default(DRAFT)
+  sortOrder        Int           @default(0)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  deletedAt        DateTime?
+
+  destination Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+
+  @@index([destinationId, status, sortOrder])
+  @@index([type])
+}
+
+// ─────────────────────────────── Saved trips ───────────────────────────────
+
+model SavedTrip {
+  id           String    @id @default(cuid())
+  userId       String
+  title        String
+  notes        String?
+  startDate    DateTime?
+  days         Int?
+  destinations Json // JSON array of destination slugs, in order
+  itinerary    Json? // optional [{ day, title, stops[] }] copied from a suggested itinerary
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt(sort: Desc)])
+}
+
+// ──────────────────────────── Community (anonymous) ────────────────────────────
+// Identity protection: other users only ever see `alias`, a pseudonym derived from
+// HMAC(COMMUNITY_ALIAS_SECRET, userId:communityId) — stable inside one community,
+// unlinkable across communities. authorId is kept so moderators can act on abuse and
+// is NEVER returned by public endpoints.
+
+enum CommunityItemStatus {
+  VISIBLE
+  PENDING // held by spam checks until a moderator approves
+  REMOVED // by a moderator
+  DELETED // by the author
+}
+
+enum VoteTarget {
+  POST
+  COMMENT
+}
+
+enum ReportReason {
+  SPAM
+  HARASSMENT
+  HATE
+  MISINFORMATION
+  PERSONAL_INFO
+  ILLEGAL
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  ACTIONED
+  DISMISSED
+}
+
+model Community {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  icon        String? // emoji
+  rules       Json? // JSON array of strings
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  posts CommunityPost[]
+  bans  CommunityBan[]
+}
+
+model CommunityPost {
+  id            String              @id @default(cuid())
+  communityId   String
+  authorId      String
+  alias         String
+  title         String
+  body          String // plain text (rendered as text, never HTML)
+  linkUrl       String?
+  upvotes       Int                 @default(0)
+  downvotes     Int                 @default(0)
+  score         Int                 @default(0)
+  hotRank       Float               @default(0) // see community.ranking.ts
+  commentCount  Int                 @default(0)
+  spamScore     Float               @default(0)
+  status        CommunityItemStatus @default(VISIBLE)
+  removedReason String?
+  isLocked      Boolean             @default(false)
+  isPinned      Boolean             @default(false)
+  editedAt      DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  community Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  author    User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments  CommunityComment[]
+
+  @@index([communityId, status, hotRank(sort: Desc)])
+  @@index([communityId, status, createdAt(sort: Desc)])
+  @@index([status, hotRank(sort: Desc)])
+  @@index([authorId, createdAt])
+}
+
+model CommunityComment {
+  id            String              @id @default(cuid())
+  postId        String
+  parentId      String?
+  authorId      String
+  alias         String
+  body          String
+  depth         Int                 @default(0)
+  upvotes       Int                 @default(0)
+  downvotes     Int                 @default(0)
+  score         Int                 @default(0)
+  spamScore     Float               @default(0)
+  status        CommunityItemStatus @default(VISIBLE)
+  removedReason String?
+  editedAt      DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  post    CommunityPost      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parent  CommunityComment?  @relation("Replies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies CommunityComment[] @relation("Replies")
+  author  User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@index([parentId])
+  @@index([authorId, createdAt])
+}
+
+model CommunityVote {
+  id         String     @id @default(cuid())
+  userId     String
+  targetType VoteTarget
+  targetId   String
+  value      Int // +1 or -1
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, targetType, targetId])
+  @@index([targetType, targetId])
+}
+
+model ContentReport {
+  id           String       @id @default(cuid())
+  reporterId   String
+  targetType   VoteTarget
+  targetId     String
+  reason       ReportReason
+  details      String?
+  status       ReportStatus @default(OPEN)
+  resolvedById String?
+  resolvedAt   DateTime?
+  resolution   String?
+  createdAt    DateTime     @default(now())
+
+  reporter   User  @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  resolvedBy User? @relation("Resolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@unique([reporterId, targetType, targetId])
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+}
+
+/// communityId null = site-wide ban. expiresAt null = permanent.
+model CommunityBan {
+  id          String    @id @default(cuid())
+  userId      String
+  communityId String?
+  reason      String
+  expiresAt   DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  liftedAt    DateTime?
+
+  user      User       @relation("BannedUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User?      @relation("BanIssuer", fields: [createdById], references: [id], onDelete: SetNull)
+  community Community? @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@index([userId, liftedAt])
+}

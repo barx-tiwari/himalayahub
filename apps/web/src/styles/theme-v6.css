@@ -1,0 +1,166 @@
+/* ═══════════════════════ HimalayaHub v6 — "Himalayan Dusk" visual layer ═══════════════════════
+   Loaded last. Changes look & motion only (no layout rewrites), so every page upgrades at once.
+   Palette: night-indigo base, marigold → rhododendron → glacier-violet accents.
+   All motion respects prefers-reduced-motion (see bottom). */
+
+:root {
+  --dusk-1: #ffb547;   /* marigold */
+  --dusk-2: #ff6b8b;   /* rhododendron */
+  --dusk-3: #8b7bff;   /* glacier violet */
+  --dusk-4: #38d6c4;   /* glacial lake */
+  --grad-dusk: linear-gradient(120deg, var(--dusk-1), var(--dusk-2) 45%, var(--dusk-3));
+  --grad-lake: linear-gradient(120deg, var(--dusk-4), var(--dusk-3));
+  --card-radius: 22px;
+  --lift: translateY(-6px);
+  --ease-spring: cubic-bezier(.2, .9, .25, 1.15);
+}
+:root[data-theme='dark'] {
+  --bg: #0b1020; --bg-soft: #121a30; --surface: #121a2e; --surface-2: #17213a;
+  --border: rgba(160, 175, 230, .12); --border-strong: rgba(160, 175, 230, .22);
+  --text: #eef1ff; --text-muted: #a3adcc; --primary: #9d8cff; --primary-soft: rgba(157, 140, 255, .16);
+}
+:root, :root[data-theme='light'] {
+  --glow: rgba(139, 123, 255, .35);
+}
+:root[data-theme='dark'] { --glow: rgba(157, 140, 255, .45); }
+
+/* ── Living background: slow aurora drift behind everything ── */
+body { background: var(--bg); }
+body::before {
+  content: ''; position: fixed; inset: -20vmax; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(40vmax 30vmax at 15% 10%, color-mix(in srgb, var(--dusk-3) 16%, transparent), transparent 70%),
+    radial-gradient(35vmax 28vmax at 85% 20%, color-mix(in srgb, var(--dusk-2) 11%, transparent), transparent 70%),
+    radial-gradient(45vmax 30vmax at 50% 100%, color-mix(in srgb, var(--dusk-4) 10%, transparent), transparent 70%);
+  animation: aurora 38s ease-in-out infinite alternate;
+}
+@keyframes aurora { 0% { transform: translate3d(0, 0, 0) rotate(0deg); } 50% { transform: translate3d(-3vmax, 2vmax, 0) rotate(4deg); } 100% { transform: translate3d(3vmax, -2vmax, 0) rotate(-3deg); } }
+
+/* ── Section headings: gradient ink + animated underline ── */
+.hs-head h2, .page-header h1, .gems-intro h1 {
+  background: linear-gradient(100deg, var(--text) 0%, var(--text) 45%, var(--dusk-1) 62%, var(--dusk-2) 76%, var(--dusk-3) 90%, var(--text) 100%);
+  background-size: 250% 100%; background-position: 0% 50%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: ink 9s ease-in-out infinite alternate;
+}
+@keyframes ink { to { background-position: 100% 50%; } }
+.hs-head h2::after { content: ''; display: block; width: 72px; height: 4px; border-radius: 4px; margin-top: 14px; background: var(--grad-dusk); background-size: 200% 100%; animation: bar 4s linear infinite; }
+@keyframes bar { to { background-position: 200% 0; } }
+.hs-more { background: var(--grad-dusk); -webkit-background-clip: text; background-clip: text; color: transparent !important; font-weight: 800; }
+.hs-more svg { color: var(--dusk-2); transition: transform .3s var(--ease-spring); }
+.hs-more:hover svg { transform: translateX(6px); }
+
+/* ── Signature card: gradient hairline border + cursor spotlight + lift ── */
+.learn-tile, .course-mini, .tin-grid > .glass, .card, .gem-card, .gems-mini a, .cm-post, .guide-block, .stay, .itin-card, .gem-fact {
+  --mx: 50%; --my: 50%;
+  position: relative; isolation: isolate;
+  border-radius: var(--card-radius);
+  background:
+    radial-gradient(420px circle at var(--mx) var(--my), color-mix(in srgb, var(--dusk-3) 13%, transparent), transparent 42%) padding-box,
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    linear-gradient(140deg, var(--border-strong), transparent 40%, transparent 60%, var(--border-strong)) border-box;
+  border: 1px solid transparent;
+  transition: transform .45s var(--ease-spring), box-shadow .45s var(--ease), background .3s;
+}
+.learn-tile:hover, .course-mini:hover, .tin-grid > .glass:hover, .gem-card:hover, .gems-mini a:hover, .cm-post:hover, .guide-block:hover, .stay:hover {
+  transform: var(--lift);
+  background:
+    radial-gradient(420px circle at var(--mx) var(--my), color-mix(in srgb, var(--dusk-2) 16%, transparent), transparent 45%) padding-box,
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    var(--grad-dusk) border-box;
+  box-shadow: 0 22px 50px -24px var(--glow), 0 0 0 1px transparent;
+}
+.card-flat { background: var(--surface-2); }
+
+/* ── Learn tiles ── */
+.learn-tile svg:first-child { width: 46px; height: 46px; padding: 10px; border-radius: 14px; color: #fff; background: var(--grad-dusk); box-shadow: 0 10px 24px -10px var(--dusk-2); transition: transform .5s var(--ease-spring); }
+.learn-tile:nth-child(2) svg:first-child { background: var(--grad-lake); box-shadow: 0 10px 24px -10px var(--dusk-4); }
+.learn-tile:nth-child(3) svg:first-child { background: linear-gradient(120deg, var(--dusk-2), var(--dusk-3)); }
+.learn-tile:nth-child(4) svg:first-child { background: linear-gradient(120deg, var(--dusk-1), var(--dusk-4)); }
+.learn-tile:hover svg:first-child { transform: rotate(-8deg) scale(1.08); }
+.learn-n { background: var(--grad-dusk); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.learn-tile:nth-child(2) .learn-n { background: var(--grad-lake); -webkit-background-clip: text; background-clip: text; }
+.learn-go { transition: transform .35s var(--ease-spring), opacity .3s; }
+.learn-tile:hover .learn-go { transform: translate(4px, -4px) scale(1.2); }
+.course-mini .icon-tile { transition: transform .5s var(--ease-spring); box-shadow: 0 12px 26px -12px rgba(0,0,0,.6); }
+.course-mini:hover .icon-tile { transform: scale(1.1) rotate(6deg); }
+.course-mini .course-arrow { transition: transform .35s var(--ease-spring); }
+.course-mini:hover .course-arrow { transform: translateX(6px); color: var(--dusk-2); }
+.progress, .progress-bar { overflow: hidden; }
+
+/* ── "Today in Nepal" widgets: colour strip per type, soft unavailable state ── */
+.tin-grid > .glass { overflow: hidden; }
+.tin-grid > .glass::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--grad-dusk); opacity: .85; }
+.tin-grid > .glass:nth-child(3n+2)::before { background: var(--grad-lake); }
+.tin-grid > .glass:nth-child(3n)::before { background: linear-gradient(90deg, var(--dusk-2), var(--dusk-3)); }
+.data-state { border: 1px dashed var(--border-strong); border-radius: 16px; background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
+.data-state .btn { border-radius: 999px; }
+.ticker { border-radius: 999px; padding-inline: 18px; background: color-mix(in srgb, var(--surface) 80%, transparent); backdrop-filter: blur(10px); border: 1px solid var(--border); }
+.ticker-label::before { animation: pulse 1.8s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c-red) 60%, transparent); } 50% { box-shadow: 0 0 0 6px transparent; } }
+
+/* ── Hidden Gems strip ── */
+.gems-lead { border-radius: 28px; box-shadow: 0 30px 70px -35px rgba(0,0,0,.8); }
+.gems-lead > picture, .gems-lead > img, .gems-lead > .gem-art { animation: kenburns 26s ease-in-out infinite alternate; transform-origin: 60% 40%; }
+@keyframes kenburns { from { transform: scale(1.02) translate3d(0, 0, 0); } to { transform: scale(1.14) translate3d(-2%, -1.5%, 0); } }
+.gems-lead::after { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; background: var(--grad-dusk); background-size: 300% 300%; animation: sheen 8s linear infinite;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; opacity: .75; }
+@keyframes sheen { to { background-position: 300% 0; } }
+.gems-lead-text h3 { font-size: clamp(1.8rem, 1.2rem + 2vw, 2.8rem); letter-spacing: -0.02em; }
+.gems-lead-text p { color: #ffe7c2; }
+.gem-rank { background: var(--grad-dusk); color: #1b1030; box-shadow: 0 6px 16px -6px var(--dusk-2); font-weight: 900; }
+.gems-mini a { border-radius: 18px; }
+.gems-mini .gem-rank, .gems-thumb .gem-rank { background: var(--grad-dusk); color: #1b1030; box-shadow: 0 4px 10px -4px rgba(0,0,0,.6); }
+.gems-thumb { width: 76px; height: 56px; border-radius: 12px; }
+.gems-thumb > :first-child, .gems-thumb picture > img { transition: transform .6s var(--ease); }
+.gems-mini a:hover .gems-thumb > :first-child, .gems-mini a:hover .gems-thumb picture > img { transform: scale(1.18); }
+.gems-mini a:hover strong { background: var(--grad-dusk); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.gem-card { overflow: hidden; }
+.gem-card-media > *:not(.gem-rank):not(.nearby-badge), .gem-card-media picture > img { transition: transform .9s var(--ease); }
+.gem-card:hover .gem-card-media > *:not(.gem-rank):not(.nearby-badge), .gem-card:hover .gem-card-media picture > img { transform: scale(1.08); }
+.nearby-badge { position: absolute; right: 10px; bottom: 10px; z-index: 2; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 800; color: #fff; background: rgba(12, 16, 36, .62); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.18); letter-spacing: .02em; }
+.gems-thumb .nearby-badge { display: none; } /* too small; the full card still shows it */
+.gem-head-media > picture > img, .gem-head-media > img, .gem-head-media > .gem-art { animation: kenburns 30s ease-in-out infinite alternate; }
+
+/* Explore Nepal: gem tiles in the full list */
+.dest-tile.is-gem { box-shadow: 0 0 0 1px color-mix(in srgb, var(--dusk-2) 45%, transparent); }
+.dest-gem-badge { position: absolute; top: 14px; left: 14px; z-index: 2; padding: 5px 11px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 800; color: #1b1030; background: var(--grad-dusk); }
+.ex-gems { margin-bottom: var(--space-7); }
+
+/* ── Buttons: gradient primary with a light sweep ── */
+.btn-primary { background: var(--grad-dusk); color: #1b1030; border: 0; position: relative; overflow: hidden; font-weight: 800; box-shadow: 0 10px 24px -12px var(--dusk-2); }
+.btn-primary:hover:not(:disabled) { background: var(--grad-dusk); color: #1b1030; transform: translateY(-1px); box-shadow: 0 16px 32px -14px var(--dusk-2); }
+.btn-primary::after { content: ''; position: absolute; inset: 0; transform: translateX(-120%); background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,.55) 50%, transparent 80%); }
+.btn-primary:hover::after { transition: transform .75s var(--ease); transform: translateX(120%); }
+.btn-secondary { border-radius: 999px; }
+.btn-secondary:hover:not(:disabled) { border-color: var(--dusk-3); color: var(--text); box-shadow: 0 8px 20px -12px var(--glow); }
+
+/* Navbar: glass + gradient active bar */
+.navbar { backdrop-filter: saturate(1.4) blur(14px); background: color-mix(in srgb, var(--bg) 72%, transparent); }
+.nav-links > .nav-item > .nav-link::after { background: var(--grad-dusk) !important; height: 3px; border-radius: 3px; }
+.avatar { background: var(--grad-dusk); color: #1b1030; }
+
+/* Scroll reveal: a touch of blur + rise */
+.reveal-ready [data-reveal]:not(.is-visible) { opacity: 0; transform: translateY(26px) scale(.98); filter: blur(6px); }
+[data-reveal] { transition: opacity .8s var(--ease), transform .8s var(--ease-spring), filter .8s var(--ease); }
+
+/* Focus stays obvious on the new surfaces */
+:focus-visible { outline: 2px solid var(--dusk-1); outline-offset: 3px; }
+
+@media (hover: none) { .learn-tile:hover, .course-mini:hover, .gem-card:hover, .gems-mini a:hover, .cm-post:hover { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  body::before, .hs-head h2, .page-header h1, .gems-intro h1, .hs-head h2::after, .gems-lead > *, .gems-lead::after,
+  .gem-head-media > *, .ticker-label::before { animation: none !important; }
+  .learn-tile, .course-mini, .gem-card, .gems-mini a, .cm-post, .guide-block, .stay, .btn-primary::after { transition: none !important; }
+  .reveal-ready [data-reveal]:not(.is-visible) { filter: none; }
+}
+
+/* Navbar with the Sign in button: keep the action area compact on wide screens too. */
+@media (min-width: 1181px) {
+  .navbar .search-trigger .search-hint, .navbar .search-trigger .search-label { display: none; }
+  .navbar .search-trigger { padding-inline: 10px; }
+  .navbar .nav-actions { gap: 6px; flex: none; }
+  .navbar .nav-links { flex-shrink: 1; min-width: 0; }
+}
+@media (min-width: 1181px) and (max-width: 1799px) { .navbar .sos-btn .sos-label { display: none; } .navbar .sos-btn { padding: 0 10px; } }
+@media (min-width: 1181px) and (max-width: 1599px) { .nav-signin-label { display: none; } .nav-signin { padding-inline: 9px; } }
